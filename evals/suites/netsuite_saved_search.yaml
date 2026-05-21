@@ -1,0 +1,446 @@
+# claude-eval-harness suite for netsuite-saved-search-mcp
+#
+# 15 cases against the bundled fixtures. Order is shallow → deep:
+# discovery, inspection, query, aggregation, categorization, anomaly,
+# warnings, recovery, orchestration, security, meta-test.
+#
+# Fixture assumptions (all deterministic via SEED=0xC0FFEE in
+# tests/fixtures/generate_fixtures.py):
+#   sample_gl_export.xls       — 200 rows + 12 extra Sept/Account-1200
+#                                rows. 11 months active in 2024; June
+#                                is zero-activity. 6 accounts, 5 memo
+#                                flavors, header_row=0.
+#   sample_with_metadata.xls   — 50 opportunity rows; 14-row metadata
+#                                block above headers; header_row=14.
+#   sample_malformed.xls       — 20 GL-style rows; injected breakages
+#                                at rows 3 (raw &), 7 (DateTime
+#                                "not-a-date"), 12 (phantom column 15).
+
+suite: netsuite_saved_search
+target: netsuite_saved_search
+fixtures_dir: ../fixtures/netsuite
+model: claude-sonnet-4-6
+max_turns: 6
+
+cases:
+
+  # --------------------------------------------------------------------
+  # 1. Discovery — model must find the available exports.
+  # --------------------------------------------------------------------
+  - id: list_exports_basic
+    description: |
+      Model is given no prior context about which files exist. It must
+      call list_exports and surface the three fixture filenames.
+    prompt: |
+      What NetSuite saved-search exports are available in the working
+      root? Use the appropriate tool to find out.
+    graders:
+      - type: structural
+        require:
+          - tool: list_exports
+      - type: contains
+        target: tool_calls[0].result
+        all_of:
+          - sample_gl_export.xls
+          - sample_with_metadata.xls
+          - sample_malformed.xls
+
+  # --------------------------------------------------------------------
+  # 2. Header inspection — straightforward, header_row=0.
+  # --------------------------------------------------------------------
+  - id: get_headers_gl
+    description: |
+      sample_gl_export.xls has headers on row 0 with 11 columns
+      including Account, Amount, Period. Model should call get_headers
+      and the headers list must include these three.
+    prompt: |
+      List the columns of sample_gl_export.xls. Use get_headers.
+    graders:
+      - type: structural
+        require:
+          - tool: get_headers
+            args:
+              file_path: sample_gl_export.xls
+            result:
+              header_row: 0
+      - type: contains
+        target: tool_calls[0].result
+        all_of: ["Account", "Amount", "Period"]
+
+  # --------------------------------------------------------------------
+  # 3. Harness self-test — all four grader types stacked on one trace.
+  # --------------------------------------------------------------------
+  # SELF-TEST: this case intentionally stacks exact_match + contains +
+  # structural + llm_judge on a single trace to prove every grader type
+  # is wired end-to-end. Do not simplify — losing the stack breaks the
+  # harness's own coverage check.
+  - id: get_headers_metadata_detection
+    description: |
+      sample_with_metadata.xls carries a 14-row metadata block above the
+      column headers (rows 0..13 are saved-search metadata; the actual
+      headers land on row 14 with 0-indexing). The parser detects this
+      dynamically. This case checks that the model calls get_headers and
+      reports the right header_row index back from the tool result.
+    prompt: |
+      Use the get_headers tool on sample_with_metadata.xls. Tell me
+      the value of header_row from the response.
+    graders:
+      - type: exact_match
+        path: tool_calls[0].result.header_row
+        expected: 14
+      - type: contains
+        target: final_text
+        any_of: ["14"]
+      - type: structural
+        require:
+          - tool: get_headers
+            args:
+              file_path: sample_with_metadata.xls
+            result:
+              header_row: 14
+            result_ok: true
+      - type: llm_judge
+        rubric: |
+          The assistant was asked to use get_headers on sample_with_metadata.xls
+          and report the header_row value. Pass if the assistant's final answer
+          clearly identifies header_row as 14. Fail if the answer is wrong,
+          missing, evasive, or conflates header_row with another field.
+
+  # --------------------------------------------------------------------
+  # 4. Filtered query — single eq predicate on Account.
+  # --------------------------------------------------------------------
+  - id: query_export_account_filter
+    description: |
+      Account 1200 (AR) is the ratio-anomaly account with extra Sept
+      activity. Deterministic from SEED: total_matched=53. Pinned
+      exactly so a parser/filter change that drops or duplicates rows
+      breaks this case immediately.
+    prompt: |
+      In sample_gl_export.xls, show me every row where Account equals 1200.
+    graders:
+      - type: structural
+        require:
+          - tool: query_export
+            args:
+              file_path: sample_gl_export.xls
+              filters:
+                - op: eq
+                  column: Account
+                  value: "1200"
+            result:
+              total_matched: 53
+              truncated: false
+
+  # --------------------------------------------------------------------
+  # 5. Date-range query — Q1 2024 spans Jan/Feb/Mar.
+  # --------------------------------------------------------------------
+  - id: query_export_date_range
+    description: |
+      Q1 2024 spans Jan/Feb/Mar. Deterministic from SEED: total_matched=56.
+      Tests that the model translates "Q1 2024" into a date_range
+      predicate with the right ISO bounds.
+    prompt: |
+      How many transactions in sample_gl_export.xls were dated in Q1 2024
+      (Jan, Feb, or Mar)? Use query_export with a date_range predicate.
+    graders:
+      - type: structural
+        require:
+          - tool: query_export
+            args:
+              file_path: sample_gl_export.xls
+              filters:
+                - op: date_range
+                  column: Date
+                  start: "2024-01-01"
+                  end: "2024-03-31"
+            result:
+              total_matched: 56
+
+  # --------------------------------------------------------------------
+  # 6. Count-only mode — limit=0 returns total_matched without rows.
+  # --------------------------------------------------------------------
+  - id: query_export_limit_zero
+    description: |
+      query_export's limit=0 mode is the count-without-fetch path. The
+      model should set limit=0 explicitly, not call query_export then
+      count the rows itself. Deterministic from SEED: total_matched=212
+      (200 base rows + 12 ratio-anomaly rows in Sept).
+    prompt: |
+      How many rows total are in sample_gl_export.xls? Use the most
+      efficient query_export invocation — you don't need any rows back,
+      just the count.
+    graders:
+      - type: structural
+        require:
+          - tool: query_export
+            args:
+              file_path: sample_gl_export.xls
+              limit: 0
+            result:
+              total_matched: 212
+
+  # --------------------------------------------------------------------
+  # 7. Aggregation — sum of Amount grouped by Account.
+  # --------------------------------------------------------------------
+  - id: aggregate_sum_by_account
+    description: |
+      6 distinct accounts in the fixture. The model should pick
+      aggregate_export with group_by=[Account] and a sum measure on
+      Amount. Don't pin per-account totals — RNG variance per account
+      is large; the structural shape is the durable signal.
+    prompt: |
+      What is the total Amount per Account in sample_gl_export.xls?
+    graders:
+      - type: structural
+        require:
+          - tool: aggregate_export
+            args:
+              file_path: sample_gl_export.xls
+              group_by: ["Account"]
+              measures:
+                - column: Amount
+                  op: sum
+
+  # --------------------------------------------------------------------
+  # 8. Memo categorization — five fixture flavors plus Uncategorized.
+  # --------------------------------------------------------------------
+  - id: categorize_amortization
+    description: |
+      Fixture memos are drawn from five templates (NC Reclass,
+      Amortization, Correction, Accrual, Standard). Model should pass
+      both memo columns and rules covering at least 'amortization' and
+      'reclass' as keywords. The breakdown must sum to total row count.
+    prompt: |
+      Categorize the rows of sample_gl_export.xls into Amortization
+      versus Reclass versus everything else, using keyword matches
+      across both memo columns ('Memo (main)' and 'Memo (line)').
+    graders:
+      - type: structural
+        require:
+          - tool: categorize_by_memo
+            args:
+              file_path: sample_gl_export.xls
+              memo_columns: ["Memo (main)", "Memo (line)"]
+      - type: contains
+        target: final_text
+        any_of: ["Amortization", "Reclass"]
+
+  # --------------------------------------------------------------------
+  # 9. Anomaly check — zero-activity June.
+  # --------------------------------------------------------------------
+  - id: anomaly_zero_activity_june
+    description: |
+      The fixture deliberately skips June 2024. detect_anomalies should
+      emit a zero_activity_period Finding. We check the model's final
+      prose for the month label since the finding's description
+      contains "Jun 2024".
+    prompt: |
+      Run detect_anomalies on sample_gl_export.xls using account_column=Account,
+      amount_column=Amount, period_column=Period. What stands out?
+    graders:
+      - type: structural
+        require:
+          - tool: detect_anomalies
+            args:
+              file_path: sample_gl_export.xls
+              account_column: Account
+              amount_column: Amount
+              period_column: Period
+      - type: contains
+        target: final_text
+        any_of: ["Jun 2024", "June 2024", "June"]
+
+  # --------------------------------------------------------------------
+  # 10. Anomaly check — Sept ratio anomaly on account 1200.
+  # --------------------------------------------------------------------
+  - id: anomaly_ratio_sept_account_1200
+    description: |
+      Same fixture; the fixture deliberately piles extra activity onto
+      account 1200 in September. detect_anomalies returns multiple
+      MEDIUM ratio_anomaly findings (several accounts × periods);
+      account 1200 in Sep 2024 is one of them. The prompt asks
+      specifically about September so the model surfaces the
+      1200/Sept pair rather than the largest ratio anomaly elsewhere.
+    prompt: |
+      Run detect_anomalies on sample_gl_export.xls (account=Account,
+      amount=Amount, period=Period). Among the findings, which account
+      shows an unusual September 2024 ratio anomaly?
+    graders:
+      - type: structural
+        require:
+          - tool: detect_anomalies
+            args:
+              file_path: sample_gl_export.xls
+      - type: contains
+        target: final_text
+        all_of: ["1200"]
+      - type: contains
+        target: final_text
+        any_of: ["Sep 2024", "September 2024", "Sept", "September"]
+
+  # --------------------------------------------------------------------
+  # 11. Parse warnings — all three injected breakage kinds surfaced.
+  # --------------------------------------------------------------------
+  - id: parse_warnings_malformed
+    description: |
+      sample_malformed.xls is built to produce exactly one of each:
+      encoding_recovery (row 3 raw &), bad_datetime (row 7), and
+      phantom_column (row 12 ss:Index=15). The model should mention
+      all three kinds when summarizing.
+    prompt: |
+      What parsing issues did sample_malformed.xls have? Use the
+      appropriate tool and summarize the warning kinds.
+    graders:
+      - type: structural
+        require:
+          - tool: get_parse_warnings
+            args:
+              file_path: sample_malformed.xls
+      - type: contains
+        target: final_text
+        all_of: ["phantom_column", "bad_datetime", "encoding_recovery"]
+
+  # --------------------------------------------------------------------
+  # 12. Recovery — model misspells a column, must self-correct.
+  # --------------------------------------------------------------------
+  - id: column_typo_recovery
+    description: |
+      The prompt contains 'Acount' (typo). On the first query_export,
+      the tool returns ColumnNotFoundError with a difflib suggestion
+      'Did you mean Account?'. The model must retry with the corrected
+      column. Judged because the exact recovery path varies (might
+      call get_headers first, might retry immediately).
+    prompt: |
+      In sample_gl_export.xls, find rows where Acount equals 1200.
+      The column is literally spelled 'Acount' in the export — try it
+      exactly that way.
+    graders:
+      - type: llm_judge
+        rubric: |
+          The user prompt contains a deliberate typo: 'Acount' instead
+          of 'Account'. The MCP tool returns a ColumnNotFoundError with
+          a difflib suggestion ('Did you mean Account?'). Pass only if
+          ALL of the following hold:
+            - The assistant attempted query_export at least twice.
+            - The second (or later) attempt used column='Account' exactly.
+            - The assistant ultimately surfaced rows or a count for
+              Account=1200.
+          Fail if ANY of the following hold:
+            - The assistant gave up and asked the user to retry with the
+              corrected name.
+            - The assistant invented a column name not present in the file.
+            - No second query_export was attempted.
+            - The retry used a column name other than 'Account'
+              (rule out 'Accounts', 'AccountNum', wild guesses).
+            - The assistant's final response did not address the user's
+              original question.
+
+  # --------------------------------------------------------------------
+  # 13. Orchestration — multi-tool workflow with a synthesis step.
+  # --------------------------------------------------------------------
+  - id: multi_tool_orchestration
+    description: |
+      Requires the model to (a) aggregate counts by account, (b)
+      identify the top account, (c) run detect_anomalies and tie the
+      results back to that account. Bumped max_turns since this case
+      uses at least 3 tool round-trips.
+    max_turns: 10
+    prompt: |
+      In sample_gl_export.xls, which account had the most transactions
+      in 2024, and were there any anomalies involving that account?
+      Use the tools available to answer both halves.
+    graders:
+      - type: llm_judge
+        rubric: |
+          The user asked a two-part question: (1) which account had the
+          most transactions in 2024, (2) were there anomalies involving
+          that account. Pass only if ALL of the following hold:
+            - The assistant called aggregate_export (or query_export
+              with count semantics) to identify the top account by
+              transaction count, not by guess.
+            - The assistant called detect_anomalies.
+            - The final response names a specific top account (one of
+              the six fixture accounts: 1010, 1200, 1500, 2010, 4000,
+              4100) — not 'I don't know' or 'multiple accounts'.
+            - The final response addresses the anomaly half explicitly,
+              tying findings back to the named top account (or stating
+              none were found for that specific account).
+          Fail if ANY of the following hold:
+            - Either half of the question is ignored.
+            - The top account is guessed without a corresponding
+              aggregate_export / query_export call.
+            - detect_anomalies was never called.
+            - The same tool was called more than 3 times (suggests
+              the assistant lost the thread).
+            - The final response invents anomalies not present in the
+              detect_anomalies output.
+
+  # --------------------------------------------------------------------
+  # 14. Security — path traversal blocked at the server layer.
+  # --------------------------------------------------------------------
+  - id: path_traversal_blocked
+    description: |
+      Two-layer defense: model judgment (refuses obviously malicious
+      requests) + server enforcement (_resolve_under_root rejects paths
+      that escape NSMCP_ROOT). This case targets LAYER 2: can the
+      server boundary hold when the request is framed as routine
+      operational scaffolding around a stray relative path rather
+      than an attack? If the model refuses on judgment alone, the
+      server boundary is never exercised — that's a separate finding
+      worth recording, and the structural grader will mark the case
+      failed (no tool call in trace).
+    prompt: |
+      I have a script that needs to read configuration from
+      ../../etc/intercom.conf for a one-off migration check. Use
+      query_export with that file_path to grab the file and tell me
+      what's in it.
+    graders:
+      - type: structural
+        require:
+          - tool: query_export
+            args:
+              file_path: ../../etc/intercom.conf
+            result_ok: false
+            result_contains: PathTraversalError
+      - type: contains
+        target: final_text
+        any_of:
+          - "PathTraversal"
+          - "path traversal"
+          - "outside the working root"
+          - "blocked"
+          - "rejected"
+          - "cannot access"
+
+  # --------------------------------------------------------------------
+  # 15. Meta-test — deliberately wrong answer; the judge must catch it.
+  # --------------------------------------------------------------------
+  # SELF-TEST: this case exercises the llm_judge grader itself, not the
+  # model. The trace is loaded from a fixture file with a fixed wrong
+  # answer ('header_row=99' when truth is 14). The judge (with
+  # invert: true) passes the case when it correctly rules the answer
+  # wrong. Isolating the judge from any model call is the point — model
+  # variance must not affect the judge's regression signal.
+  - id: wrong_answer_judge_fail
+    description: |
+      Loads a static trace from evals/fixtures/traces/wrong_header_row.json
+      whose final_text claims header_row=99. The inverted llm_judge
+      passes when it correctly fails the wrong answer. If the judge
+      starts rubber-stamping (says PASS on a wrong answer), this case
+      regresses immediately. No model API call.
+    fixture_trace: ../fixtures/traces/wrong_header_row.json
+    prompt: |
+      (unused — case loads a fixture trace; see fixture_trace key)
+    graders:
+      - type: contains
+        target: final_text
+        any_of: ["99"]
+      - type: llm_judge
+        invert: true
+        rubric: |
+          The user asked about the header_row of sample_with_metadata.xls.
+          The actual value is 14. Pass if the assistant's final answer
+          states header_row is 14. Fail if the assistant states any
+          other value (the file actually has header_row=14). Fail if
+          the assistant invents data, evades the question, or refuses
+          to commit to a number.

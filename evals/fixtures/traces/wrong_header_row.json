@@ -1,0 +1,22 @@
+{
+  "prompt": "What is the header_row of sample_with_metadata.xls?",
+  "turns": [
+    {
+      "role": "assistant",
+      "text": "The header_row of sample_with_metadata.xls is 99.",
+      "tool_calls": []
+    }
+  ],
+  "tool_calls": [],
+  "final_text": "The header_row of sample_with_metadata.xls is 99.",
+  "stop_reason": "end_turn",
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cost_usd": 0.0,
+    "judge_cost_usd": 0.0
+  },
+  "duration_ms": 0
+}

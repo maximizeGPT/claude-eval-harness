@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Run output is local-only; CI stores it elsewhere.
+# Exception: the committed baseline-* JSONs are the README walkthrough's
+# reproducible artifacts. Anything else under runs/ stays local.
+runs/*.json
+!runs/baseline-*.json
+
+.env
+.envrc
