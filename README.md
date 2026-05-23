@@ -98,6 +98,12 @@ uv run harness run evals/suites/netsuite_saved_search.yaml --model claude-opus-4
 uv run harness diff runs/baseline-sonnet-4-6.json runs/baseline-opus-4-7.json
 ```
 
+The two runs above are committed at
+[`runs/baseline-sonnet-4-6.json`](runs/baseline-sonnet-4-6.json) and
+[`runs/baseline-opus-4-7.json`](runs/baseline-opus-4-7.json) — open
+either to see the raw trace and grader output the diff was computed
+from.
+
 Sonnet 4.6 scored 12/15. Opus 4.7 scored 13/15. The diff makes that
 one-case difference visible alongside five behavioral changes that a
 pass/fail-only view would miss.
@@ -177,12 +183,16 @@ What the diff exposes:
 
 ## Cost
 
-Full suite cost on the dual-baseline above: **Sonnet 4.6 = $0.54** model
-+ **$0.009 judge** = $0.55 total; **Opus 4.7 = $3.20** model + **$0.011
-judge** = $3.21 total. The judge overhead is roughly constant across
-models (four `llm_judge`-graded cases, Haiku 4.5 by default). For CI
-integration Sonnet is the default; Opus is the pre-release
-verification pass.
+Full suite cost on the dual-baseline above:
+
+| Model | Model cost | Judge cost | Total |
+|---|---|---|---|
+| Sonnet 4.6 | $0.54 | $0.009 | $0.55 |
+| Opus 4.7   | $3.20 | $0.011 | $3.21 |
+
+Judge overhead is roughly constant across models — four
+`llm_judge`-graded cases, Haiku 4.5 by default. For CI integration
+Sonnet is the default; Opus is the pre-release verification pass.
 
 Judge cost is reported separately from case cost in the per-case line
 and run totals: `cost=$0.0136 (+$0.0014 judge) wall=5317 ms`. The
@@ -228,9 +238,28 @@ silently fixed:
 - **Case 15 uses `fixture_trace` to isolate the judge from model
   variance.** The harness can replay pre-built traces directly when
   meta-testing graders — case 15's trace lives at
-  `evals/fixtures/traces/wrong_header_row.json` and the runner skips
-  the model call entirely. This is the design choice that makes
-  judge-regression testing legible.
+  [`evals/fixtures/traces/wrong_header_row.json`](evals/fixtures/traces/wrong_header_row.json)
+  and the runner skips the model call entirely. This is the design
+  choice that makes judge-regression testing legible.
+
+## Architecture
+
+`harness run` is a linear pipeline: load and validate the suite YAML;
+construct the named target (e.g. `netsuite_saved_search`) which owns
+both the Anthropic tool definitions and the dispatch from tool name +
+input to a Python result; iterate over cases; for each case, the
+runner drives a tool-use loop against the Anthropic API, capturing
+every turn into a Trace; once the loop ends, the configured graders
+are applied to that Trace; the per-case results plus token / cost
+totals are serialized into one run JSON.
+
+`harness diff` reads two run JSONs and walks them case-by-case,
+classifying each into `regressed` (pass → fail), `fixed` (fail →
+pass), `changed` (same pass/fail but grader metadata drifted), or
+`unchanged`. The console reporter prints the first three prominently;
+unchanged cases collapse to a tally. The diagram in
+[`docs/pipeline.svg`](./docs/pipeline.svg) covers the same flow
+visually.
 
 ## Commands
 
