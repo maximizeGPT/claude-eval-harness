@@ -1,5 +1,9 @@
 # claude-eval-harness
 
+[![CI](https://github.com/maximizeGPT/claude-eval-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/maximizeGPT/claude-eval-harness/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Python: 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/downloads/)
+
 A regression-diff eval harness for Anthropic tool-use agents. Suites are
 YAML; runs are self-contained JSON; `harness diff` surfaces per-case
 behavioral changes between two runs — including drift in LLM-judge
@@ -11,6 +15,28 @@ one or more graders score the resulting trace.
 *v0.1, prototype. Tested against example workloads only. The run-JSON
 schema is at v1; `harness diff` refuses to compare runs across schema
 majors.*
+
+## At a glance
+
+The bundled NetSuite suite (15 cases) against two Claude models, with
+the `harness diff` summary that surfaces behavioral drift beyond
+pass/fail:
+
+| Model              | Passed | Failed | Cost   |
+|--------------------|--------|--------|--------|
+| Claude Sonnet 4.6  | 12/15  | 3      | $0.54  |
+| Claude Opus 4.7    | 13/15  | 2      | $3.21  |
+
+```
+== fixed:     1 ==   column_typo_recovery (Sonnet stops; Opus retries with corrected column)
+== changed:   5 ==   metadata drift on PASS verdicts + 1 PASS→FAIL phrasing fingerprint
+== unchanged: 9 ==
+```
+
+That one-case pass/fail delta is interesting; the five `changed` cases
+are what `harness diff` exists to surface. Worked example with the full
+diff output further down. See [`docs/pipeline.svg`](./docs/pipeline.svg)
+for the harness's data-flow architecture.
 
 ## Install
 
