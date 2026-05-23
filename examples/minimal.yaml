@@ -1,0 +1,94 @@
+# claude-eval-harness — minimal example suite.
+#
+# Three cases against the bundled netsuite-saved-search-mcp target,
+# pedagogical (~30 seconds end-to-end against Claude Haiku to keep
+# cost negligible). Demonstrates the three grader types: structural,
+# contains, and llm_judge.
+#
+# Run from the repo root:
+#   uv sync --extra netsuite
+#   export ANTHROPIC_API_KEY=sk-ant-...
+#   uv run harness run examples/minimal.yaml
+#
+# Compare two runs with:
+#   uv run harness run examples/minimal.yaml --out runs/a.json
+#   uv run harness run examples/minimal.yaml --out runs/b.json --model claude-sonnet-4-6
+#   uv run harness diff runs/a.json runs/b.json
+
+suite: minimal_example
+target: netsuite_saved_search
+fixtures_dir: ../../evals/fixtures/netsuite
+model: claude-haiku-4-5
+max_turns: 4
+
+cases:
+
+  # ----------------------------------------------------------------
+  # 1. Discovery — structural grader on tool selection.
+  # ----------------------------------------------------------------
+  - id: list_exports_basic
+    description: |
+      Smoke test that the target binding works end-to-end. Model must
+      call list_exports and surface the three fixture filenames in the
+      response.
+    prompt: |
+      What NetSuite saved-search exports are available? Use the
+      appropriate tool to find out.
+    graders:
+      - type: structural
+        require:
+          - tool: list_exports
+      - type: contains
+        target: tool_calls[0].result
+        all_of:
+          - sample_gl_export.xls
+          - sample_with_metadata.xls
+          - sample_malformed.xls
+
+  # ----------------------------------------------------------------
+  # 2. Header inspection — contains grader on response text.
+  # ----------------------------------------------------------------
+  - id: get_headers_basic
+    description: |
+      Model must call get_headers on a file with header_row=0 (the
+      simple case) and surface at least the Account and Amount columns
+      in its summary.
+    prompt: |
+      What columns are in sample_gl_export.xls? Use the right tool.
+    graders:
+      - type: structural
+        require:
+          - tool: get_headers
+            args:
+              file_path: sample_gl_export.xls
+      - type: contains
+        target: response
+        all_of:
+          - Account
+          - Amount
+
+  # ----------------------------------------------------------------
+  # 3. Judged query — llm_judge grader on multi-step reasoning.
+  # ----------------------------------------------------------------
+  - id: filtered_query_with_reasoning
+    description: |
+      Model must filter by Account=4000 and explain its result. The
+      LLM judge confirms both the tool call shape AND that the response
+      cites the actual row count from the tool output rather than
+      hallucinating.
+    prompt: |
+      In sample_gl_export.xls, how many rows are for Account 4000?
+      Use the tools to find out and explain your answer.
+    graders:
+      - type: structural
+        require:
+          - tool: query_export
+            args:
+              file_path: sample_gl_export.xls
+      - type: llm_judge
+        model: claude-haiku-4-5
+        rubric: |
+          The response (1) calls query_export with a filter on Account
+          equal to 4000, (2) cites a specific row count from the tool's
+          actual result rather than estimating, and (3) does not invent
+          rows or accounts that weren't in the tool output.

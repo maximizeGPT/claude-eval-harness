@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 460" width="1000" height="460" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif">
+  <title>claude-eval-harness pipeline — YAML suite to diff-ready run JSON.</title>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0E0F11"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1000" height="460" fill="#F7F6F2"/>
+
+  <!-- Title -->
+  <text x="500" y="36" text-anchor="middle" font-size="20" font-weight="600" fill="#0E0F11">claude-eval-harness — data flow</text>
+  <text x="500" y="58" text-anchor="middle" font-size="12" fill="#A6A6A2">YAML suite → run JSON. Re-runnable, diff-able, schema-versioned.</text>
+
+  <!-- Pipeline boxes -->
+  <!-- 1. Suite YAML -->
+  <rect x="40" y="180" width="140" height="80" rx="8" ry="8" fill="#EDEDEB" stroke="#A6A6A2" stroke-width="1.5"/>
+  <text x="110" y="212" text-anchor="middle" font-size="13" font-weight="600" fill="#0E0F11">Suite YAML</text>
+  <text x="110" y="230" text-anchor="middle" font-size="10" fill="#0E0F11">cases · graders</text>
+  <text x="110" y="246" text-anchor="middle" font-size="10" fill="#A6A6A2" font-style="italic">user-authored</text>
+
+  <!-- 2. Config -->
+  <rect x="220" y="180" width="120" height="80" rx="8" ry="8" fill="#FFFFFF" stroke="#0E0F11" stroke-width="1.5"/>
+  <text x="280" y="212" text-anchor="middle" font-size="13" font-weight="600" fill="#0E0F11">Config</text>
+  <text x="280" y="230" text-anchor="middle" font-size="10" fill="#0E0F11">model · target</text>
+  <text x="280" y="246" text-anchor="middle" font-size="10" fill="#0E0F11">max_turns · seed</text>
+
+  <!-- 3. Target -->
+  <rect x="380" y="180" width="120" height="80" rx="8" ry="8" fill="#FFFFFF" stroke="#0E0F11" stroke-width="1.5"/>
+  <text x="440" y="212" text-anchor="middle" font-size="13" font-weight="600" fill="#0E0F11">Target</text>
+  <text x="440" y="230" text-anchor="middle" font-size="10" fill="#0E0F11">tool defs +</text>
+  <text x="440" y="246" text-anchor="middle" font-size="10" fill="#0E0F11">dispatch()</text>
+
+  <!-- 4. Runner -->
+  <rect x="540" y="180" width="120" height="80" rx="8" ry="8" fill="#FFFFFF" stroke="#2D7A4E" stroke-width="2"/>
+  <text x="600" y="212" text-anchor="middle" font-size="13" font-weight="600" fill="#2D7A4E">Runner</text>
+  <text x="600" y="230" text-anchor="middle" font-size="10" fill="#0E0F11">message loop</text>
+  <text x="600" y="246" text-anchor="middle" font-size="10" fill="#0E0F11">→ Anthropic API</text>
+
+  <!-- 5. Graders -->
+  <rect x="700" y="180" width="120" height="80" rx="8" ry="8" fill="#FFFFFF" stroke="#0E0F11" stroke-width="1.5"/>
+  <text x="760" y="208" text-anchor="middle" font-size="13" font-weight="600" fill="#0E0F11">Graders</text>
+  <text x="760" y="224" text-anchor="middle" font-size="10" fill="#0E0F11">structural</text>
+  <text x="760" y="238" text-anchor="middle" font-size="10" fill="#0E0F11">contains</text>
+  <text x="760" y="252" text-anchor="middle" font-size="10" fill="#0E0F11">llm_judge</text>
+
+  <!-- 6. Storage -->
+  <rect x="860" y="120" width="120" height="80" rx="8" ry="8" fill="#FFFFFF" stroke="#0E0F11" stroke-width="1.5"/>
+  <text x="920" y="152" text-anchor="middle" font-size="13" font-weight="600" fill="#0E0F11">Storage</text>
+  <text x="920" y="170" text-anchor="middle" font-size="10" fill="#0E0F11">runs/&lt;run-id&gt;.json</text>
+  <text x="920" y="186" text-anchor="middle" font-size="10" fill="#A6A6A2" font-style="italic">schema_version=1</text>
+
+  <!-- 7. Diff -->
+  <rect x="860" y="240" width="120" height="80" rx="8" ry="8" fill="#FFFFFF" stroke="#0E0F11" stroke-width="1.5"/>
+  <text x="920" y="272" text-anchor="middle" font-size="13" font-weight="600" fill="#0E0F11">Diff</text>
+  <text x="920" y="290" text-anchor="middle" font-size="10" fill="#0E0F11">fixed / broken /</text>
+  <text x="920" y="306" text-anchor="middle" font-size="10" fill="#0E0F11">changed / unchanged</text>
+
+  <!-- Arrows -->
+  <path d="M 180 220 L 215 220" stroke="#0E0F11" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 340 220 L 375 220" stroke="#0E0F11" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 500 220 L 535 220" stroke="#0E0F11" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 660 220 L 695 220" stroke="#0E0F11" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 820 220 L 855 160" stroke="#0E0F11" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 920 200 L 920 235" stroke="#0E0F11" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 3"/>
+
+  <!-- Anthropic external pill -->
+  <rect x="540" y="80" width="120" height="40" rx="6" ry="6" fill="#EDEDEB" stroke="#A6A6A2" stroke-width="1"/>
+  <text x="600" y="98" text-anchor="middle" font-size="11" font-weight="600" fill="#0E0F11">api.anthropic.com</text>
+  <text x="600" y="112" text-anchor="middle" font-size="9" fill="#A6A6A2">Claude + LLM judges</text>
+
+  <!-- Runner ↕ Anthropic (vertical) -->
+  <path d="M 600 175 L 600 125" stroke="#2D7A4E" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 605 125 L 605 175" stroke="#2D7A4E" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Footer caption -->
+  <text x="500" y="380" text-anchor="middle" font-size="11" fill="#0E0F11">Solid horizontal: synchronous pipeline. Green: every Anthropic API call (Runner + LLM-judge graders share the seam).</text>
+  <text x="500" y="397" text-anchor="middle" font-size="11" fill="#0E0F11">Dashed: same run JSON consumed by `harness diff` later — typically against another run JSON from a different model or harness version.</text>
+  <text x="500" y="420" text-anchor="middle" font-size="10" fill="#A6A6A2" font-style="italic">Suite + Config + Target inputs are immutable per run. The run JSON is self-contained: include trace, grader scores, costs, schema_version.</text>
+</svg>
